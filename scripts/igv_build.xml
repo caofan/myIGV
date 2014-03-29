@@ -1,0 +1,157 @@
+<!--
+  ~ Copyright (c) 2007-2012 The Broad Institute, Inc.
+  ~ SOFTWARE COPYRIGHT NOTICE
+  ~ This software and its documentation are the copyright of the Broad Institute, Inc. All rights are reserved.
+  ~
+  ~ This software is supplied without any warranty or guaranteed support whatsoever. The Broad Institute is not responsible for its use, misuse, or functionality.
+  ~
+  ~ This software is licensed under the terms of the GNU Lesser General Public License (LGPL),
+  ~ Version 2.1 which is available at http://www.opensource.org/licenses/lgpl-2.1.php.
+  -->
+
+<project name="IGV" default="build" basedir="../.">
+
+    <property name="jar.name" value="igv.jar"/>
+    <property name="dist.dir" value="${basedir}/${ant.project.name}-dist/"/>
+    <property name="jar.path" value="${dist.dir}${jar.name}"/>
+    <property name="dist.lib.dir" value="${dist.dir}lib/"/>
+
+    <property name="include.libs" value="true"/>
+
+    <import file="../build.xml"/>
+
+    <property name="alias" value="Broad-alias"/>
+    <property name="key-password" value="Broad-keypass"/>
+    <property name="store-password" value="Broad-storepass"/>
+
+    <!-- The deployment folder for the JWS distribution. It is expected that this property will be overridden -->
+    <property name="deploy.dir" value="${basedir}/deploy/"/>
+
+    <!-- Src/binary archive file settings -->
+    <property name="src.archive.name" value="IGVDistribution_${version}"/>
+    <property name="src.archive.dest.dir" value="${basedir}"/>
+    <property name="src.archive.zip" value="${src.archive.dest.dir}/${src.archive.name}.zip"/>
+
+    <property name="bin.archive.name" value="IGV_${version}"/>
+    <property name="bin.archive.zip" value="${bin.archive.name}.zip"/>
+
+    <!-- Sign all jars if a keystore is defined -->
+    <target name="sign-jars" if="keystore">
+        <signjar jar="${jar.path}" alias="${alias}" keypass="${key-password}" storepass="${store-password}"
+                 keystore="${keystore}"/>
+        <signjar jar="${dist.dir}batik-codec.jar" alias="${alias}" keypass="${key-password}"
+                 storepass="${store-password}" keystore="${keystore}"/>
+        <signjar jar="${dist.dir}goby-io-igv.jar" alias="${alias}" keypass="${key-password}"
+                 storepass="${store-password}" keystore="${keystore}"/>
+    </target>
+
+    <fileset id="scripts" dir="${scripts.dir}">
+        <include name="igv.sh"/>
+        <include name="igv.command"/>
+        <include name="igv.bat"/>
+    </fileset>
+
+    <!-- Deploy the application -->
+    <target name="deploy">
+        <copy todir="${deploy.dir}" overwrite="true">
+            <fileset dir="${dist.dir}">
+                <include name="lib/**"/>
+            </fileset>
+            <fileset file="${dist.dir}${jar.name}"/>
+            <fileset file="${dist.dir}batik-codec.jar"/>
+            <fileset file="${dist.dir}goby-io-igv.jar"/>
+        </copy>
+    </target>
+
+    <!--Macro for creating zipped archive, used by bin and src/bin-->
+    <macrodef name="archive">
+        <attribute name="bin.dirname"/>
+        <attribute name="zip.dest"/>
+        <attribute name="update" default="no"/>
+
+
+        <sequential>
+
+            <!-- Copy files to directory -->
+            <copy todir="${tmp.dir}/@{bin.dirname}" file="${dist.dir}igv.jar"/>
+            <copy todir="${tmp.dir}/@{bin.dirname}" file="${dist.dir}batik-codec.jar"/>
+            <copy todir="${tmp.dir}/@{bin.dirname}" file="${dist.dir}goby-io-igv.jar"/>
+
+            <zip destfile="@{zip.dest}" update="@{update}" duplicate="fail">
+                <zipfileset dir="${tmp.dir}" filemode="755">
+                    <include name="**/igv.sh"/>
+                    <include name="**/igv.command"/>
+                    <include name="**/igv.bat"/>
+                </zipfileset>
+                <zipfileset dir="${tmp.dir}">
+                    <exclude name="**/igv.sh"/>
+                    <exclude name="**/igv.command"/>
+                    <exclude name="**/igv.bat"/>
+                </zipfileset>
+            </zip>
+        </sequential>
+    </macrodef>
+
+    <!--Create binary archive -->
+    <target name="publishBin" depends="build">
+        <delete file="${bin.archive.zip}"/>
+        <delete dir="${tmp.dir}"/>
+
+        <mkdir dir="${tmp.dir}/${bin.archive.name}"/>
+        <copy todir="${tmp.dir}/${bin.archive.name}">
+            <fileset dir="${docs.dir}/">
+                <include name="readme.txt"/>
+            </fileset>
+            <fileset refid="scripts"/>
+        </copy>
+
+        <archive bin.dirname="${bin.archive.name}" zip.dest="${bin.archive.zip}"/>
+    </target>
+
+
+    <!--Create a src/binary archive -->
+    <target name="publish" depends="build">
+
+        <!-- Clean -->
+        <delete dir="${tmp.dir}"/>
+        <delete file="${src.archive.zip}"/>
+
+        <!-- Copy scripts and docs -->
+        <copy todir="${tmp.dir}/${src.archive.name}">
+            <fileset file="build.xml"/>
+            <fileset file="build_macros.xml"/>
+            <fileset dir="${basedir}">
+                <include name="docs/*"/>
+                <!--include name="test/src/**/*"/>
+                <include name="test/data/**/*"/>
+                <include name="test/lib/**/*"/-->
+                <exclude name="**/*hic*"/>
+            </fileset>
+            <fileset refid="scripts"/>
+        </copy>
+
+        <!-- Src and lib directory -->
+        <copy todir="${tmp.dir}/${src.archive.name}/src">
+            <fileset dir="${src.dir}"/>
+        </copy>
+
+        <replace file="${tmp.dir}/${src.archive.name}/build.xml" token="@version" value="${version}"/>
+        <write_version targetFile="${tmp.dir}/${src.archive.name}/src/resources/about.properties"/>
+
+        <copy todir="${tmp.dir}/${src.archive.name}/lib">
+            <fileset dir="${lib.dir}"/>
+        </copy>
+
+
+        <archive bin.dirname="${src.archive.name}" zip.dest="${src.archive.zip}"/>
+    </target>
+
+
+    <target name="build-jws" depends="build">
+        <antcall target="sign-jars"/>
+    </target>
+
+    <target name="all" depends="clean, init, build-jws, deploy, publish, publishBin"/>
+    <target name="publishBoth" depends="publish, publishBin"/>
+
+</project>
